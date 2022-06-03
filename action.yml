@@ -1,0 +1,101 @@
+name: 'Commit and Creating PR'
+description: 'this action runs the build command and pushes it to another repo via creating PR'
+inputs:
+  target-repo-owner:
+    required: true
+    default: ''
+  target-repo-name:
+    required: true
+    default: ''
+  target-repo-path:
+    required: true
+    default: ''
+  source-repo-path:
+    required: true
+    default: 'specs'
+  build-command:
+    required: true
+    default: './Taskfile typescript'
+  token:
+    requre: true
+  source-copy-dir:
+    required: true
+    default: ''   
+  target-copy-dir:
+    required: true
+    default: ''
+  git-username:
+    required: true
+    default: '' 
+  git-email:
+    required: true
+    default: '' 
+  commit-message:
+    required: true
+    default: ''     
+  base-pr-branch:
+    required: true
+    default: 'master'
+  pr-title: 
+    required: true
+    default: ''
+  pr-body: 
+    required: true
+    default: ''
+outputs:
+  random-number:
+    description: "Random number"
+    value: ${{ steps.random-number-generator.outputs.random-number }}
+runs:
+  using: "composite"
+  steps:
+    - name: set branch name
+      id: new_branch
+      run: echo ::set-output name=new_branch::$(echo "client_update_$(date +'%Y-%m-%dT%H.%M.%S')")
+      shell: bash
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        path: ${{ inputs.source-repo-path }}
+    - name: Checkout target repo
+      uses: actions/checkout@v3
+      with:
+        repository:  ${{ inputs.target-repo-owner }}/${{ inputs.target-repo-name }}
+        path: ${{ inputs.target-repo-path }}
+        token: ${{ inputs.token }}
+    - name: run js client generation
+      working-directory: ${{ inputs.source-repo-path }}
+      run: ${{ inputs.build-command }}
+      shell: bash
+    - run: cp -R ${{ inputs.source-copy-dir }} ${{ inputs.target-copy-dir }}
+      shell: bash
+    - id: git-check
+      working-directory: ${{ inputs.target-repo-path }}
+      run: echo ::set-output name=modified::$(if [ -n "$(git status --porcelain)" ]; then echo "true"; else echo "false"; fi)
+      shell: bash
+    - if: steps.git-check.outputs.modified == 'true'
+      shell: bash
+      working-directory: ${{ inputs.target-repo-path }}
+      run: |
+       git config --global user.name "${{ inputs.git-username }}"
+       git config --global user.email "${{ inputs.git-email }}"
+       git checkout -b ${{ steps.new_branch.outputs.new_branch }}
+       git add -A
+       git commit -m "${{ inputs.commit-message }}"
+       git push --set-upstream origin ${{ steps.new_branch.outputs.new_branch }}
+    - name: create pr
+      id: create_pr
+      if: steps.git-check.outputs.modified == 'true'
+      uses: octokit/request-action@v2.x
+      with:
+        route: POST /repos/{owner}/{repo}/pulls
+        owner: ${{ inputs.target-repo-owner }}
+        repo: ${{ inputs.target-repo-name }}
+        base: ${{ inputs.base-pr-branch }}
+        head: ${{ steps.new_branch.outputs.new_branch }}
+        title: ${{ inputs.pr-title }}
+        body: ${{ inputs.pr-body }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+
+
