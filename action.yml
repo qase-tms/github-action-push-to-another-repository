@@ -51,7 +51,7 @@ runs:
   steps:
     - name: set branch name
       id: new_branch
-      run: echo ::set-output name=new_branch::$(echo "client_update_$(date +'%Y-%m-%dT%H.%M.%S')")
+      run: echo ::set-output name=new_branch::$(echo "client_update_$(date +%s)")
       shell: bash
     - name: Checkout
       uses: actions/checkout@v3
